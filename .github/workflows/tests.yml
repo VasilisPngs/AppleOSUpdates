@@ -1,0 +1,23 @@
+name: Tests
+
+# The announcer runs unattended every five minutes, so a parsing regression
+# would reach the channel before anyone looked. Run the suite on every push.
+on:
+  push:
+    # Only the code. The watch rewrites its state branch constantly, and
+    # there is nothing there to test.
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      # The same "3.x" the watch runs on, so the suite is checked against
+      # whatever Python it will actually meet, not a version frozen here.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+      - run: python -m unittest discover -s tests -v

@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# The half-written file that becomes state/seen.json, never the record itself.
+state/*.new

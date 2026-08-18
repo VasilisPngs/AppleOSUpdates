@@ -1,0 +1,27 @@
+AppleOSUpdates
+Copyright (C) 2026 VasilisPngs
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or (at your
+option) any later version. See LICENSE for the full text.
+
+
+Third-party material
+--------------------
+
+certs/AppleRootCA.pem is the Apple Root CA certificate, published by Apple
+Inc. at https://www.apple.com/certificateauthority/. It is included so that
+requests to gdmf.apple.com — which is served from Apple's own PKI rather
+than any public trust store — can be verified rather than trusted blindly.
+It is Apple's, not covered by the licence above, and redistributed
+unmodified.
+
+
+Trademarks
+----------
+
+Apple, iOS, iPadOS, macOS, tvOS, watchOS and visionOS are trademarks of
+Apple Inc. This project is not affiliated with, endorsed by, or sponsored
+by Apple Inc. Those names are used only to say which software a release
+belongs to.

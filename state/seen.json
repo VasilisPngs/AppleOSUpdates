@@ -1,0 +1,29 @@
+{
+ "updated": "2026-08-18T15:52:58Z",
+ "entries": {
+  "ios|12.5.8|stable": "16H88",
+  "ios|15.8.8|stable": "19H422",
+  "ios|16.7.16|stable": "20H392",
+  "ios|18.7.10|stable": "22H374",
+  "ios|26.6.1|stable": "23G83",
+  "ios|27.0|beta6": "24A5418b",
+  "ipados|12.5.8|stable": "16H88",
+  "ipados|15.8.8|stable": "19H422",
+  "ipados|16.7.16|stable": "20H392",
+  "ipados|17.7.11|stable": "21H461",
+  "ipados|18.7.10|stable": "22H374",
+  "ipados|26.6.1|stable": "23G83",
+  "ipados|27.0|beta6": "24A5418b",
+  "macos|11.7.11|stable": "20G1443",
+  "macos|12.7.6|stable": "21H1320",
+  "macos|13.7.8|stable": "22H730",
+  "macos|14.8.9|stable": "23J631",
+  "macos|15.7.9|stable": "24G830",
+  "macos|26.6.2|stable": "25G83",
+  "macos|27.0|beta6": "26A5416b",
+  "tvos|27.0|beta6": "24J5353b",
+  "visionos|26.6.1|stable": "23O780",
+  "visionos|27.0|beta6": "24M5355a",
+  "watchos|27.0|beta6": "24R5353a"
+ }
+}

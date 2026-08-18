@@ -1,0 +1,166 @@
+name: Apple OS updates
+
+on:
+  schedule:
+    # The cron does not set the pace; the job below does. GitHub fires a
+    # "*/5" schedule about twice an hour in practice, so the job stays alive
+    # for hours and times itself. The cron only has to start it.
+    - cron: "37 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print messages instead of posting to Telegram"
+        type: boolean
+        default: false
+
+# One watch at a time; the next is released the moment this one ends, on
+# time or dead. Getting a runner takes a few minutes, so each handover is a
+# short blind window. That costs latency, not coverage: nothing asks "what
+# changed since last poll", so the next watch picks up whatever landed.
+concurrency:
+  group: apple-updates
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    # GitHub kills a job at six hours; stop before that.
+    timeout-minutes: 355
+
+    steps:
+      # The branch tip, not the trigger commit: a queued run wants current code.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref_name }}
+
+      # Newest Python the runner has. Pinning a version would need bumping
+      # by hand; the code is stdlib only, nothing past 3.9.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+
+      - name: Watch for releases
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -uo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # One branch, one commit deep. Every write replaces it with a new
+          # parentless commit. The history worth scrolling is the channel.
+          save_state () {
+            local blob tree commit message
+            for attempt in 1 2 3 4; do
+              # Rebuild on the current tip: a watch runs for hours, and code
+              # pushed during one must not be undone by a state write.
+              if ! git fetch --depth 1 origin "${GITHUB_REF_NAME}"; then
+                sleep $(( 2 ** attempt ))
+                continue
+              fi
+
+              blob=$(git hash-object -w state/seen.json) || return 1
+
+              # A scratch index, so the checkout itself is left untouched.
+              tree=""
+              GIT_INDEX_FILE="${RUNNER_TEMP}/state.index"
+              export GIT_INDEX_FILE
+              rm -f "${GIT_INDEX_FILE}"
+              git read-tree FETCH_HEAD \
+                && git update-index --add \
+                     --cacheinfo "100644,${blob},state/seen.json" \
+                && tree=$(git write-tree)
+              unset GIT_INDEX_FILE
+              [[ -n "${tree}" ]] || return 1
+
+              # Keep the existing message, not "state".
+              message=$(git log -1 --format=%B FETCH_HEAD)
+              commit=$(git commit-tree "${tree}" -m "${message}") || return 1
+
+              git push --force origin \
+                "${commit}:refs/heads/${GITHUB_REF_NAME}" && return 0
+
+              echo "Push rejected (attempt ${attempt}); rebuilding on the new tip."
+              sleep $(( 2 ** attempt ))
+            done
+            return 1
+          }
+
+          # The record ships with the code, so the checkout already has it.
+          if [[ ! -f state/seen.json ]]; then
+            mkdir -p state
+            echo '{"updated": null, "entries": {}}' > state/seen.json
+            echo "::warning::No record of what has been announced; starting empty."
+          fi
+
+          # Dry runs check once and stop; a real watch keeps going.
+          watch_until=$(( $(date +%s) + 350 * 60 ))
+          [[ "${DRY_RUN}" == "true" ]] && watch_until=0
+
+          round=0
+          consecutive_failures=0
+          worst_streak=0
+
+          while :; do
+            # gdmf (52 KB) flips the instant an update is downloadable; the
+            # 1.29 MB index only confirms it, so it is read every fifth round.
+            if (( round % 5 == 0 )); then
+              unset SKIP_SECURITY_PAGE
+            else
+              export SKIP_SECURITY_PAGE=true
+            fi
+
+            next=$(( $(date +%s) + 60 ))
+            before=$(sha256sum state/seen.json | cut -d' ' -f1)
+
+            if python main.py; then
+              consecutive_failures=0
+            else
+              consecutive_failures=$(( consecutive_failures + 1 ))
+              echo "Round ${round} reported trouble (${consecutive_failures} in a row)."
+
+              # Remember the worst streak, not the current one: a flapping
+              # source would otherwise finish at zero and look healthy.
+              (( consecutive_failures > worst_streak )) \
+                && worst_streak=${consecutive_failures}
+            fi
+
+            # Save the moment anything goes out: a dying runner must not cost
+            # a repeat of every post it already made.
+            if [[ "${DRY_RUN}" != "true" ]] \
+               && [[ "$(sha256sum state/seen.json | cut -d' ' -f1)" != "${before}" ]]; then
+              save_state || { echo "::error::Could not record what was announced."; exit 1; }
+            fi
+
+            round=$(( round + 1 ))
+            now=$(date +%s)
+            (( now + 60 <= watch_until )) || break
+            (( next > now )) && sleep $(( next - now ))
+          done
+
+          echo "Watched ${round} round(s)."
+
+          # GitHub disables a scheduled workflow after 60 days of repo
+          # silence. A quiet spell on Apple's side must not kill the cron.
+          if [[ "${DRY_RUN}" != "true" ]]; then
+            git fetch --depth 1 origin "${GITHUB_REF_NAME}" 2>/dev/null
+            last=$(git log -1 --format=%ct FETCH_HEAD 2>/dev/null || echo 0)
+            if (( ( $(date +%s) - last ) / 86400 >= 45 )); then
+              echo "Quiet for 45 days; rewriting the commit to keep the cron alive."
+              save_state
+            fi
+          fi
+
+          # A blip is not a fault; three minutes of it is. The watch does not
+          # stop — the other sources keep the channel running — but the run
+          # goes red at the end, which is what sends the mail.
+          if (( worst_streak >= 3 )); then
+            echo "::error::A source failed for ${worst_streak} rounds during this watch."
+            exit 1
+          fi
